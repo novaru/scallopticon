@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/novaru/scallopticon/services/planet/internal/service"
+	"github.com/novaru/scallopticon/shared/apperrors"
+	"github.com/novaru/scallopticon/shared/response"
 )
 
 type PlayerHandler struct {
@@ -18,16 +22,32 @@ func NewPlayerHandler(s service.PlayerService) *PlayerHandler {
 	return &PlayerHandler{service: s}
 }
 
+type CreatePlayerRequest struct {
+	Username   string `json:"username"`
+	PlanetName string `json:"planet_name"`
+}
+
+func (r *CreatePlayerRequest) Validate() error {
+	if strings.TrimSpace(r.Username) == "" {
+		return apperrors.NewInvalidInputError("username is required", nil)
+	}
+	if len(r.Username) < 3 {
+		return apperrors.NewInvalidInputError("username must be at least 3 characters", nil)
+	}
+	if strings.TrimSpace(r.PlanetName) == "" {
+		return apperrors.NewInvalidInputError("planet name is required", nil)
+	}
+	return nil
+}
+
 func (h *PlayerHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
 	players, err := h.service.GetAllPlayers(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to queries all players", http.StatusBadRequest)
+		response.WriteError(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(players)
+	response.WriteSuccess(w, players)
 }
 
 func (h *PlayerHandler) GetPlayerByID(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +60,15 @@ func (h *PlayerHandler) GetPlayerByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	player, err := h.service.GetPlayerByID(r.Context(), playerID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Player not found", http.StatusNotFound)
+			return
+		}
+		log.Println("Error fetching player:", err)
+		http.Error(w, "Failed to fetch player", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -47,26 +76,24 @@ func (h *PlayerHandler) GetPlayerByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PlayerHandler) CreatePlayer(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username   string `json:"username"`
-		PlanetName string `json:"planet_name"`
-	}
+	var req CreatePlayerRequest
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.WriteError(w, apperrors.NewInvalidInputError("invalid JSON format", err))
 		return
 	}
 
-	player, planet, err := h.service.CreatePlayerWithPlanet(r.Context(), req.Username, req.PlanetName)
+	if err := req.Validate(); err != nil {
+		response.WriteError(w, err)
+		return
+	}
+
+	result, err := h.service.CreatePlayerWithPlanet(r.Context(), req.Username, req.PlanetName)
 	if err != nil {
-		log.Println("Error creating player with planet:", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.WriteError(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
-		"player": player,
-		"planet": planet,
-	})
+	response.WriteCreated(w, result)
 }

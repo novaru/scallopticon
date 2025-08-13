@@ -8,15 +8,21 @@ import (
 	"github.com/novaru/scallopticon/shared/db/generated"
 )
 
-type PlayerRepository struct {
+type PlayerRepository interface {
+	GetPlayers(ctx context.Context) ([]generated.Player, error)
+	GetByID(ctx context.Context, id uuid.UUID) (generated.Player, error)
+	CreatePlayerWithPlanet(ctx context.Context, username, planetName string) (generated.Player, generated.Planet, error)
+}
+
+type playerRepository struct {
 	q *generated.Queries
 }
 
-func NewPlayerRepository(q *generated.Queries) *PlayerRepository {
-	return &PlayerRepository{q: q}
+func NewPlayerRepository(q *generated.Queries) PlayerRepository {
+	return &playerRepository{q: q}
 }
 
-func (r *PlayerRepository) GetPlayers(ctx context.Context) ([]generated.Player, error) {
+func (r *playerRepository) GetPlayers(ctx context.Context) ([]generated.Player, error) {
 	players, err := r.q.ListPlayers(ctx)
 	if err != nil {
 		log.Println(err)
@@ -25,7 +31,7 @@ func (r *PlayerRepository) GetPlayers(ctx context.Context) ([]generated.Player, 
 	return players, nil
 }
 
-func (r *PlayerRepository) GetByID(ctx context.Context, id uuid.UUID) (generated.Player, error) {
+func (r *playerRepository) GetByID(ctx context.Context, id uuid.UUID) (generated.Player, error) {
 	player, err := r.q.GetPlayerByID(ctx, id)
 	if err != nil {
 		return generated.Player{}, err
@@ -34,7 +40,7 @@ func (r *PlayerRepository) GetByID(ctx context.Context, id uuid.UUID) (generated
 	return player, nil
 }
 
-func (r *PlayerRepository) CreatePlayerWithPlanet(ctx context.Context, username, planetName string) (generated.Player, generated.Planet, error) {
+func (r *playerRepository) CreatePlayerWithPlanet(ctx context.Context, username, planetName string) (generated.Player, generated.Planet, error) {
 	player, err := r.q.CreatePlayer(ctx, username)
 	if err != nil {
 		return generated.Player{}, generated.Planet{}, err

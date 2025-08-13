@@ -14,9 +14,13 @@ import (
 	"github.com/novaru/scallopticon/services/planet/internal/repository"
 	"github.com/novaru/scallopticon/services/planet/internal/service"
 	"github.com/novaru/scallopticon/shared/db/generated"
+	"go.uber.org/zap"
 )
 
 func main() {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -34,7 +38,7 @@ func main() {
 
 	q := generated.New(pool)
 	repo := repository.NewPlayerRepository(q)
-	svc := service.NewPlayerService(repo)
+	svc := service.NewPlayerService(repo, logger)
 	handler := handlers.NewPlayerHandler(svc)
 
 	r := chi.NewRouter()
