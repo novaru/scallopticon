@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 
@@ -10,11 +9,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"go.uber.org/zap"
+
 	"github.com/novaru/scallopticon/services/planet/internal/handlers"
 	"github.com/novaru/scallopticon/services/planet/internal/repository"
 	"github.com/novaru/scallopticon/services/planet/internal/service"
 	"github.com/novaru/scallopticon/shared/db/generated"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -22,22 +22,22 @@ func main() {
 	defer logger.Sync()
 
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		logger.Fatal("Error loading .env file", zap.Error(err))
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL not set")
+		logger.Fatal("DATABASE_URL not set")
 	}
 
 	pool, err := pgxpool.New(context.Background(), dbURL)
 	if err != nil {
-		log.Fatalf("DB connect error: %v", err)
+		logger.Fatal("DB connect error", zap.Error(err))
 	}
 	defer pool.Close()
 
 	q := generated.New(pool)
-	repo := repository.NewPlayerRepository(q)
+	repo := repository.NewPlayerRepository(q, logger)
 	svc := service.NewPlayerService(repo, logger)
 	handler := handlers.NewPlayerHandler(svc)
 
@@ -45,10 +45,14 @@ func main() {
 
 	r.Use(middleware.Logger)
 
-	r.Get("/players", handler.GetPlayers)
-	r.Post("/players", handler.CreatePlayer)
-	r.Get("/players/{id}", handler.GetPlayerByID)
+	r.Route("/players", func(r chi.Router) {
+		r.Get("/", handler.GetPlayers)
+		r.Get("/{id}", handler.GetPlayerByID)
+		r.Post("/", handler.CreatePlayer)
+	})
 
-	log.Println("Planet service running on :5000")
-	log.Fatal(http.ListenAndServe(":5000", r))
+	logger.Info("Planet service running on :5000")
+	if err := http.ListenAndServe(":5000", r); err != nil {
+		logger.Fatal("HTTP server error", zap.Error(err))
+	}
 }

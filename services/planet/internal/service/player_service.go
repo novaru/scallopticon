@@ -97,7 +97,6 @@ func (s *playerService) GetPlayerByID(ctx context.Context, id uuid.UUID) (Player
 
 	player, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		// Error already logged and wrapped in repository
 		return PlayerResponse{}, err
 	}
 
